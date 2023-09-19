@@ -331,7 +331,8 @@ namespace Microsoft.SqlTools.ServiceLayer.Metadata
                 sqlConn,
                 $@"SELECT name 
                    FROM [sys].[databases] 
-                   WHERE name NOT IN ({ignoredDatabasesAsParams})",
+                   WHERE name NOT IN ('', {ignoredDatabasesAsParams})
+                ".Replace("('', )", "('')").Trim(),
                 ignoredDatabases.ToArray(),
                 (databaseName, objectType) =>
                 {
@@ -379,8 +380,8 @@ namespace Microsoft.SqlTools.ServiceLayer.Metadata
                 sqlConn,
                 $@"SELECT name 
                    FROM {sqlBuilder.QuoteIdentifier(databaseName)}.[sys].[schemas] 
-                   WHERE name NOT IN ({ignoredSchemasAsParams})
-                ".Trim(),
+                   WHERE name NOT IN ('', {ignoredSchemasAsParams})
+                ".Replace("('', )", "('')").Trim(),
                 ignoredSchemas.ToArray(),
                 (schemaName, objectType) =>
                 {
@@ -415,10 +416,10 @@ namespace Microsoft.SqlTools.ServiceLayer.Metadata
                    FROM {sqlBuilder.QuoteIdentifier(databaseName)}.[sys].[objects]
                    WHERE schema_id = SCHEMA_ID(@1) 
                      AND (
-                        (type = 'U' AND name NOT IN ({ignoredTablesAsParams}))
-                        OR (type = 'V' AND name NOT IN ({ignoredViewsAsParams}))
+                        (type = 'U' AND name NOT IN ('', {ignoredTablesAsParams}))
+                        OR (type = 'V' AND name NOT IN ('', {ignoredViewsAsParams}))
                      )
-                ".Trim(),
+                ".Replace("('', )", "('')").Trim(),
                 (new string[] { schemaName }).Concat(ignoredTables).ToArray(),
                 (objectName, objectType) =>
                 {
@@ -443,15 +444,16 @@ namespace Microsoft.SqlTools.ServiceLayer.Metadata
                 sqlConn,
                 $@"SELECT c.name, t.name
                    FROM {quotedDbName}.[sys].[columns] c
-                   JOIN {quotedDbName}.[sys].[types] t 
+                   JOIN {quotedDbName}.[sys].[types] t
                      ON c.system_type_id = t.system_type_id
-                   JOIN {quotedDbName}.[sys].[tables] tbl 
-                     ON c.object_id = tbl.object_id
-                   JOIN {quotedDbName}.[sys].[schemas] s 
-                     ON tbl.schema_id = s.schema_id
+                   JOIN {quotedDbName}.[sys].[objects] o
+                     ON c.object_id = o.object_id
+                   JOIN {quotedDbName}.[sys].[schemas] s
+                     ON o.schema_id = s.schema_id
                    WHERE c.object_id = OBJECT_ID(@1) AND s.name = @2
+                     AND o.type IN ('U', 'V')
                 ".Trim(),
-                new string[] { schemaName, tableOrViewName },
+                new string[] { tableOrViewName, schemaName },
                 (columnName, columnType) =>
                 {
                     return new ContextualizationMetadata
@@ -488,17 +490,20 @@ namespace Microsoft.SqlTools.ServiceLayer.Metadata
                     OBJECT_NAME(fk.referenced_object_id) AS ReferencedTableName,
                     COL_NAME(fc.referenced_object_id, fc.referenced_column_id) AS ReferencedColumnName
                 FROM
-                    {quotedDbName}.sys.foreign_keys fk
-                    INNER JOIN {quotedDbName}.sys.foreign_key_columns fc ON fk.object_id = fc.constraint_object_id
+                    {quotedDbName}.[sys].[foreign_keys] fk
+                    INNER JOIN {quotedDbName}.[sys].[foreign_key_columns] fc ON fk.object_id = fc.constraint_object_id
                 WHERE
-                    OBJECT_NAME(fk.parent_object_id) = {quotedTableOrViewName}
-                    AND SCHEMA_NAME(OBJECTPROPERTY(fk.parent_object_id, 'SchemaId')) = {quotedSchemaName}
+                    OBJECT_NAME(fk.parent_object_id) = @tableOrViewName
+                    AND SCHEMA_NAME(OBJECTPROPERTY(fk.parent_object_id, 'SchemaId')) = @schemaName
             ";
 
             try
             {
                 using (var cmd = new SqlCommand(sql, sqlConn))
                 {
+                    cmd.Parameters.AddWithValue("@tableOrViewName", tableOrViewName);
+                    cmd.Parameters.AddWithValue("@schemaName", schemaName);
+
                     using (var reader = cmd.ExecuteReader())
                     {
                         while (reader.Read())
