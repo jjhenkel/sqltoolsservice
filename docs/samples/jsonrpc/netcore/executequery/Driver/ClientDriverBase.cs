@@ -82,10 +82,10 @@ namespace Microsoft.SqlTools.JsonRpc.Driver
             EventType<TParams> eventType,
             int timeoutMilliseconds = 5000)
         {
-            Task<TParams> eventTask = null;
+            Task<TParams>? eventTask = null;
 
             // Use the event queue if one has been registered
-            AsyncQueue<object> eventQueue = null;
+            AsyncQueue<object>? eventQueue = null;
             if (this.eventQueuePerType.TryGetValue(eventType.MethodName, out eventQueue))
             {
                 eventTask =
@@ -134,10 +134,10 @@ namespace Microsoft.SqlTools.JsonRpc.Driver
             RequestType<TParams, TResponse> requestType,
             int timeoutMilliseconds = 5000)
         {
-            Task<Tuple<TParams, RequestContext<TResponse>>> requestTask = null;
+            Task<Tuple<TParams, RequestContext<TResponse>>>? requestTask = null;
 
             // Use the request queue if one has been registered
-            AsyncQueue<object> requestQueue = null;
+            AsyncQueue<object>? requestQueue = null;
             if (this.requestQueuePerType.TryGetValue(requestType.MethodName, out requestQueue))
             {
                 requestTask =

@@ -4,16 +4,15 @@
 //
 
 using System;
-using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.SqlTools.JsonRpc.Driver;
-using Microsoft.SqlTools.Credentials.Contracts;
 using Microsoft.SqlTools.ServiceLayer.Connection.Contracts;
 using Microsoft.SqlTools.ServiceLayer.LanguageServices.Contracts;
 using Microsoft.SqlTools.ServiceLayer.QueryExecution.Contracts;
 using Microsoft.SqlTools.ServiceLayer.SqlContext;
 using Microsoft.SqlTools.ServiceLayer.Workspace.Contracts;
 using Microsoft.SqlTools.ServiceLayer.QueryExecution.Contracts.ExecuteRequests;
+using Microsoft.SqlTools.ServiceLayer.Metadata.Contracts;
 
 namespace Microsoft.SqlTools.JsonRpc.Utility
 {
@@ -75,10 +74,12 @@ namespace Microsoft.SqlTools.JsonRpc.Utility
             if (connectResult)
             {
                 var completeEvent = await Driver.WaitForEvent(ConnectionCompleteNotification.Type, timeout);
+                Console.WriteLine("Connected: " + completeEvent.ConnectionId);
                 return !string.IsNullOrEmpty(completeEvent.ConnectionId);
             }
             else
             {
+                Console.WriteLine("Failed to connect");
                 return false;
             }
         }
@@ -139,6 +140,19 @@ namespace Microsoft.SqlTools.JsonRpc.Utility
         public async Task RequestChangeConfigurationNotification(DidChangeConfigurationParams<SqlToolsSettings> configParams)
         {
             await Driver.SendEvent(DidChangeConfigurationNotification<SqlToolsSettings>.Type, configParams);
+        }
+
+        /// <summary>
+        /// Request metadata for a given connection
+        /// </summary>
+        public async Task<ContextualizationMetadata> RequestContextualization(string ownerUri)
+        {
+            var contextualizationParams = new ContextualizationMetadataParams();
+            contextualizationParams.OwnerUri = ownerUri;
+            // contextualizationParams.PruneEmptyNodes = true;
+
+            var response = await Driver.SendRequest(ContextualizationMetadataRequest.Type, contextualizationParams);
+            return response.Context;
         }
 
         /// <summary>

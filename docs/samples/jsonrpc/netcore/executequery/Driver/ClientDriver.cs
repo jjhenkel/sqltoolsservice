@@ -13,7 +13,6 @@ using Microsoft.SqlTools.Hosting.Protocol;
 using Microsoft.SqlTools.Hosting.Protocol.Channel;
 using Microsoft.SqlTools.ServiceLayer.Connection.Contracts;
 using Microsoft.SqlTools.ServiceLayer.LanguageServices.Contracts;
-using Microsoft.SqlTools.ServiceLayer.QueryExecution.Contracts;
 using Microsoft.SqlTools.ServiceLayer.QueryExecution.Contracts.ExecuteRequests;
 namespace Microsoft.SqlTools.JsonRpc.Driver
 {
@@ -31,7 +30,7 @@ namespace Microsoft.SqlTools.JsonRpc.Driver
 
         public ClientDriver()
         {
-            string serviceHostExecutable = Environment.GetEnvironmentVariable(ServiceHostEnvironmentVariable);
+            string serviceHostExecutable = Environment.GetEnvironmentVariable(ServiceHostEnvironmentVariable) ?? "";
             string serviceHostArguments = "--enable-logging";
             if (string.IsNullOrWhiteSpace(serviceHostExecutable))
             {
