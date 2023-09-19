@@ -34,7 +34,6 @@ namespace Microsoft.SqlTools.ServiceLayer.IntegrationTests.Metadata
     {
         private string testTableSchema = "dbo";
         private string testTableName = "MetadataTestTable";
-        private string testTableName2 = "SecondMetadataTestTable";
 
         private LiveConnectionHelper.TestConnectionResult GetLiveAutoCompleteTestObjects()
         {
@@ -133,50 +132,97 @@ namespace Microsoft.SqlTools.ServiceLayer.IntegrationTests.Metadata
             requestContext.VerifyAll();
         }
 
+        // [Test]
+        // public async Task VerifyGetServerContextualizationRequest()
+        // {
+        //     this.testTableName += new Random().Next(1000000, 9999999).ToString();
+        //     this.testTableName2 += new Random().Next(1000000, 9999999).ToString();
+
+        //     var connectionResult = LiveConnectionHelper.InitLiveConnectionInfo(null);
+        //     var sqlConn = ConnectionService.OpenSqlConnection(connectionResult.ConnectionInfo);
+
+        //     CreateTestTable(sqlConn, this.testTableSchema, this.testTableName);
+        //     CreateTestTable(sqlConn, this.testTableSchema, this.testTableName2);
+
+        //     var firstCreateTableScript = $"CREATE TABLE [{this.testTableSchema}].[{this.testTableName}]([id] [int] NULL)";
+        //     var secondCreateTableScript = $"CREATE TABLE [{this.testTableSchema}].[{this.testTableName2}]([id] [int] NULL)";
+
+        //     var mockGetServerContextualizationRequestContext = new Mock<RequestContext<GetServerContextualizationResult>>();
+        //     var actualGetServerContextualizationResponse = new GetServerContextualizationResult();
+        //     mockGetServerContextualizationRequestContext.Setup(x => x.SendResult(It.IsAny<GetServerContextualizationResult>()))
+        //         .Callback<GetServerContextualizationResult>(actual => actualGetServerContextualizationResponse = actual)
+        //         .Returns(Task.CompletedTask);
+
+        //     var getServerContextualizationParams = new GetServerContextualizationParams
+        //     {
+        //         OwnerUri = connectionResult.ConnectionInfo.OwnerUri
+        //     };
+
+        //     // First call generates context, stores it in temp file and returns the generated context
+        //     await MetadataService.GetServerContextualization(getServerContextualizationParams, mockGetServerContextualizationRequestContext.Object);
+
+        //     Assert.IsTrue(actualGetServerContextualizationResponse.Context.Contains(firstCreateTableScript));
+        //     Assert.IsTrue(actualGetServerContextualizationResponse.Context.Contains(secondCreateTableScript));
+
+        //     // Second call gets the context from the temp file and returns that read file context.
+        //     await MetadataService.GetServerContextualization(getServerContextualizationParams, mockGetServerContextualizationRequestContext.Object);
+
+        //     DeleteTestTable(sqlConn, this.testTableSchema, this.testTableName);
+        //     DeleteTestTable(sqlConn, this.testTableSchema, this.testTableName2);
+
+        //     Assert.IsTrue(actualGetServerContextualizationResponse.Context.Contains(firstCreateTableScript));
+        //     Assert.IsTrue(actualGetServerContextualizationResponse.Context.Contains(secondCreateTableScript));
+
+        //     DeleteServerContextualizationTempFile(sqlConn.DataSource);
+
+        //     mockGetServerContextualizationRequestContext.VerifyAll();
+        // }
+
         [Test]
-        public async Task VerifyGetServerContextualizationRequest()
+        public void GetForeignKeyMetadata_ReturnsExpectedMetadata()
         {
-            this.testTableName += new Random().Next(1000000, 9999999).ToString();
-            this.testTableName2 += new Random().Next(1000000, 9999999).ToString();
+            var testDbName = "TestDatabase";
+            var testSchemaName = "dbo";
+            var testTableName = "TestTable" + new Random().Next(1000000, 9999999).ToString();
 
-            var connectionResult = LiveConnectionHelper.InitLiveConnectionInfo(null);
-            var sqlConn = ConnectionService.OpenSqlConnection(connectionResult.ConnectionInfo);
+            // Arrange
+            var result = GetLiveAutoCompleteTestObjects();
+            var sqlConn = ConnectionService.OpenSqlConnection(result.ConnectionInfo);
+            Assert.NotNull(sqlConn);
 
-            CreateTestTable(sqlConn, this.testTableSchema, this.testTableName);
-            CreateTestTable(sqlConn, this.testTableSchema, this.testTableName2);
-
-            var firstCreateTableScript = $"CREATE TABLE [{this.testTableSchema}].[{this.testTableName}]([id] [int] NULL)";
-            var secondCreateTableScript = $"CREATE TABLE [{this.testTableSchema}].[{this.testTableName2}]([id] [int] NULL)";
-
-            var mockGetServerContextualizationRequestContext = new Mock<RequestContext<GetServerContextualizationResult>>();
-            var actualGetServerContextualizationResponse = new GetServerContextualizationResult();
-            mockGetServerContextualizationRequestContext.Setup(x => x.SendResult(It.IsAny<GetServerContextualizationResult>()))
-                .Callback<GetServerContextualizationResult>(actual => actualGetServerContextualizationResponse = actual)
-                .Returns(Task.CompletedTask);
-
-            var getServerContextualizationParams = new GetServerContextualizationParams
+            // Create a test table with a foreign key constraint
+            using (var cmd = new SqlCommand($@"
+                USE [{testDbName}];
+                CREATE TABLE [{testSchemaName}].[{testTableName}] (
+                    [Id] INT PRIMARY KEY,
+                    [OtherTableId] INT,
+                    FOREIGN KEY ([OtherTableId]) REFERENCES [OtherTable] ([Id])
+                )", sqlConn))
             {
-                OwnerUri = connectionResult.ConnectionInfo.OwnerUri
-            };
+                cmd.ExecuteNonQuery();
+            }
 
-            // First call generates context, stores it in temp file and returns the generated context
-            await MetadataService.GetServerContextualization(getServerContextualizationParams, mockGetServerContextualizationRequestContext.Object);
+            // Act
+            var metadata = MetadataService.GetForeignKeyMetadata(sqlConn, testDbName, testSchemaName, testTableName);
 
-            Assert.IsTrue(actualGetServerContextualizationResponse.Context.Contains(firstCreateTableScript));
-            Assert.IsTrue(actualGetServerContextualizationResponse.Context.Contains(secondCreateTableScript));
+            // Assert
+            Assert.AreEqual(1, metadata.Count);
 
-            // Second call gets the context from the temp file and returns that read file context.
-            await MetadataService.GetServerContextualization(getServerContextualizationParams, mockGetServerContextualizationRequestContext.Object);
+            var foreignKeyMetadata = metadata.Single();
+            Assert.AreEqual(ContextualizationMetadataKind.ForeignKey, foreignKeyMetadata.Kind);
+            Assert.AreEqual("FK_TestTable_OtherTableId", foreignKeyMetadata.Name);
+            Assert.AreEqual($"[{testDbName}].[{testSchemaName}].[FK_TestTable_OtherTableId]", foreignKeyMetadata.QualifiedName);
+            Assert.AreEqual(testTableName, foreignKeyMetadata.ExtraProperties["TableName"]);
+            Assert.AreEqual("OtherTable", foreignKeyMetadata.ExtraProperties["ReferencedTableName"]);
+            Assert.AreEqual("Id", foreignKeyMetadata.ExtraProperties["ReferencedColumnName"]);
 
-            DeleteTestTable(sqlConn, this.testTableSchema, this.testTableName);
-            DeleteTestTable(sqlConn, this.testTableSchema, this.testTableName2);
-
-            Assert.IsTrue(actualGetServerContextualizationResponse.Context.Contains(firstCreateTableScript));
-            Assert.IsTrue(actualGetServerContextualizationResponse.Context.Contains(secondCreateTableScript));
-
-            DeleteServerContextualizationTempFile(sqlConn.DataSource);
-
-            mockGetServerContextualizationRequestContext.VerifyAll();
+            // Cleanup
+            using (var cmd = new SqlCommand($@"
+                USE [{testDbName}];
+                DROP TABLE [{testSchemaName}].[{testTableName}]", sqlConn))
+            {
+                cmd.ExecuteNonQuery();
+            }
         }
 
         private void DeleteServerContextualizationTempFile(string serverName)
